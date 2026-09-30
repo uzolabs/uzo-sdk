@@ -19,6 +19,8 @@ jobs:
     name: Version PR or publish
     needs: integration
     runs-on: ubuntu-latest
+    # The npm token is stored as an environment secret, so only this job can read it.
+    environment: NPM_TOKEN
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
