@@ -9,7 +9,7 @@ concurrency: release-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing and provenance
 
 jobs:
   integration:
@@ -19,15 +19,15 @@ jobs:
     name: Version PR or publish
     needs: integration
     runs-on: ubuntu-latest
-    # The npm token is stored as an environment secret, so only this job can read it.
-    environment: NPM_TOKEN
+    # Publishes via npm trusted publishing (OIDC). No npm token is stored anywhere.
+    # The trusted publisher on npmjs.com is bound to this workflow and environment.
+    environment: npm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run typecheck && npm test && npm run build && npm run size
       - name: Create release PR or publish to npm
@@ -39,5 +39,4 @@ jobs:
           commit: 'chore: release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
