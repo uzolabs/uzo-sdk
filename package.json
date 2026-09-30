@@ -1,6 +1,6 @@
 {
   "name": "@uzolabs/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed, viem-native toolkit for building on BOT Chain.",
   "license": "MIT",
   "author": "Uzo Labs",
