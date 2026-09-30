@@ -29,7 +29,8 @@ jobs:
       - run: npm run build
       - run: npm run size
       - run: npm run check:exports
-      # fetch-abis --check is added in 0.2.0, when generated ABIs land.
+      # Fails if a contract or proxy implementation changed on BOTScan.
+      - run: npm run abis:check
       - uses: actions/upload-artifact@v4
         with:
           name: dist

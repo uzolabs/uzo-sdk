@@ -50,12 +50,38 @@
         "default": "./dist/chains/index.cjs"
       }
     },
+    "./contracts": {
+      "import": {
+        "types": "./dist/contracts/index.d.ts",
+        "default": "./dist/contracts/index.js"
+      },
+      "require": {
+        "types": "./dist/contracts/index.d.cts",
+        "default": "./dist/contracts/index.cjs"
+      }
+    },
+    "./explorer": {
+      "import": {
+        "types": "./dist/explorer/index.d.ts",
+        "default": "./dist/explorer/index.js"
+      },
+      "require": {
+        "types": "./dist/explorer/index.d.cts",
+        "default": "./dist/explorer/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
       "chains": [
         "./dist/chains/index.d.cts"
+      ],
+      "contracts": [
+        "./dist/contracts/index.d.cts"
+      ],
+      "explorer": [
+        "./dist/explorer/index.d.cts"
       ]
     }
   },
@@ -76,7 +102,10 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "npm run build && changeset publish",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "abis": "tsx scripts/fetch-abis.ts",
+    "abis:check": "tsx scripts/fetch-abis.ts --check",
+    "check:deployments": "tsx scripts/check-deployments.ts"
   },
   "peerDependencies": {
     "viem": "^2.0.0"

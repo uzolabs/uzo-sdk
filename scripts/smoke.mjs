@@ -18,14 +18,21 @@ writeFileSync(
   join(dir, 'esm.mjs'),
   `import { botChain } from '@uzolabs/sdk/chains'
 import * as root from '@uzolabs/sdk'
+import { addresses, bdexV2Router02Abi } from '@uzolabs/sdk/contracts'
+import { createExplorerClient } from '@uzolabs/sdk/explorer'
 if (botChain.id !== 677 || root.botChainTestnet.id !== 968) process.exit(1)
+if (addresses[677].usdt !== root.getAddresses(677).usdt || !bdexV2Router02Abi.length) process.exit(1)
+if (typeof createExplorerClient({ chainId: 968 }).getContract !== 'function') process.exit(1)
 console.log('ESM ok')`,
 )
 writeFileSync(
   join(dir, 'cjs.cjs'),
   `const { botChainTestnet } = require('@uzolabs/sdk/chains')
 const root = require('@uzolabs/sdk')
+const { getAddresses } = require('@uzolabs/sdk/contracts')
 if (botChainTestnet.id !== 968 || root.botChain.id !== 677) process.exit(1)
+// Error classes must keep one identity across subpaths.
+try { getAddresses(1) } catch (e) { if (!(e instanceof root.UnsupportedChainError)) process.exit(1) }
 console.log('CJS ok')`,
 )
 run('node esm.mjs')
