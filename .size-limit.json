@@ -6,5 +6,29 @@
     "ignore": ["viem"],
     "limit": "2 KB",
     "gzip": true
+  },
+  {
+    "name": "@uzolabs/sdk/contracts (addresses only)",
+    "path": "dist/contracts/index.js",
+    "import": "{ addresses, getAddresses, USDT_RESOURCE_ID, TOKENS }",
+    "ignore": ["viem"],
+    "limit": "3 KB",
+    "gzip": true
+  },
+  {
+    "name": "@uzolabs/sdk/contracts (all ABIs)",
+    "path": "dist/contracts/index.js",
+    "import": "*",
+    "ignore": ["viem"],
+    "limit": "10 KB",
+    "gzip": true
+  },
+  {
+    "name": "@uzolabs/sdk/explorer",
+    "path": "dist/explorer/index.js",
+    "import": "{ createExplorerClient }",
+    "ignore": ["viem"],
+    "limit": "4 KB",
+    "gzip": true
   }
 ]
