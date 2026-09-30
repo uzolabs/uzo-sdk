@@ -1,0 +1,10 @@
+[
+  {
+    "name": "@uzolabs/sdk/chains",
+    "path": "dist/chains/index.js",
+    "import": "{ botChain, botChainTestnet }",
+    "ignore": ["viem"],
+    "limit": "2 KB",
+    "gzip": true
+  }
+]
