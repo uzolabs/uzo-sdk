@@ -20,6 +20,13 @@ describe.each(networks)('$chain.name contracts', ({ chain, book }) => {
     expect(code?.length ?? 0).toBeGreaterThan(2)
   })
 
+  // The Universal Router has no PERMIT2 getter. The address is an immutable, so it sits
+  // in the runtime bytecode as a PUSH32 operand.
+  it('Universal Router uses the exported Permit2', async () => {
+    const code = (await client.getCode({ address: book.universalRouter })) ?? '0x'
+    expect(code.toLowerCase()).toContain(book.permit2.slice(2).toLowerCase())
+  })
+
   it('USDT has 6 decimals', async () => {
     const decimals = await client.readContract({
       address: book.usdt,

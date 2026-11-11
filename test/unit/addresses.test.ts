@@ -25,8 +25,13 @@ describe('addresses', () => {
     expectTypeOf(addresses[677].usdt).toEqualTypeOf<'0xaBabc7Ddc03e501d190C676BF3d92ef0e6e87a3C'>()
   })
 
-  it('does not list a mainnet Universal Router', () => {
-    expect('universalRouter' in addresses[677]).toBe(false)
+  it('lists the same keys on both networks', () => {
+    expect(Object.keys(addresses[677]).sort()).toEqual(Object.keys(addresses[968]).sort())
+  })
+
+  it('uses the BDEX Permit2 on each network, not the canonical address', () => {
+    expect(addresses[677].permit2).toBe('0x8366170f09a04f715a13549D616a06aED16Db7c3')
+    expect(addresses[968].permit2).toBe('0xaE85b2bc7578F8Ca9217900a2D548151F96447de')
   })
 })
 
