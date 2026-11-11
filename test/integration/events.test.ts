@@ -310,6 +310,18 @@ describe('event fixtures cover every ABI event', () => {
       .filter((name) => !covered.has(name))
     expect(missing).toEqual([])
   })
+
+  it('botBridgeLegacyEventsAbi', () => {
+    const covered = new Set(
+      fixtures
+        .filter((f) => f.contract === 'bridgeRouter' && typeof f.event !== 'string')
+        .map((f) => toEventSelector(f.event as AbiEvent)),
+    )
+    const missing = events(botBridgeLegacyEventsAbi)
+      .filter((e) => !covered.has(toEventSelector(e)))
+      .map((e) => e.name)
+    expect(missing).toEqual([])
+  })
 })
 
 describe.each(fixtures.map((f) => ({ ...f, name: label(f) })))('$name', (fixture) => {

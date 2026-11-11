@@ -21,9 +21,15 @@ const EXPLORER_API = {
   968: botChainTestnet.blockExplorers.default.apiUrl,
 } as const
 
-type Source = { name: string; chainId: 677 | 968; address: string }
+type Source = {
+  name: string
+  chainId: 677 | 968
+  address: string
+  /** A second deployment whose ABI entries missing from the primary are appended. */
+  mergeFrom?: { chainId: 677 | 968; address: string }
+}
 
-// Mainnet by default, with one exception noted inline.
+// Mainnet by default. One source merges in a second deployment, noted inline.
 const SOURCES: Source[] = [
   { name: 'wbot', chainId: 677, address: addresses[677].wbot },
   { name: 'bdexV2Factory', chainId: 677, address: addresses[677].bdexV2Factory },
@@ -33,9 +39,15 @@ const SOURCES: Source[] = [
   { name: 'bdexV3SwapRouter', chainId: 677, address: addresses[677].bdexV3SwapRouter },
   { name: 'permit2', chainId: 677, address: addresses[677].permit2 },
   // Testnet runs a newer build whose ABI is the mainnet ABI plus three custom errors
-  // (InvalidHopSlippageLength and two hop slippage errors). Functions and events are
-  // identical, so the testnet ABI decodes calls and reverts on both networks.
-  { name: 'universalRouter', chainId: 968, address: addresses[968].universalRouter },
+  // (InvalidHopSlippageLength, V4TooLittleReceivedPerHop, V4TooMuchRequestedPerHop).
+  // Functions and events are identical. The merged ABI decodes reverts from both
+  // networks, and the drift check watches both contracts.
+  {
+    name: 'universalRouter',
+    chainId: 677,
+    address: addresses[677].universalRouter,
+    mergeFrom: { chainId: 968, address: addresses[968].universalRouter },
+  },
   { name: 'botBridge', chainId: 677, address: addresses[677].bridgeRouter },
 ]
 
@@ -84,7 +96,25 @@ type Fetched = {
   abi: unknown[]
 }
 
+function signature(entry: AbiEntry): string {
+  return `${entry.type} ${entry.name ?? ''}(${(entry.inputs ?? []).map((i) => i.type).join(',')})`
+}
+
 async function fetchAbi(source: Source): Promise<Fetched> {
+  const primary = await fetchOne(source)
+  if (!source.mergeFrom) return primary
+  const other = await fetchOne({ name: source.name, ...source.mergeFrom })
+  if (other.contractName !== primary.contractName) {
+    throw new Error(
+      `${source.name}: cannot merge ${other.contractName} into ${primary.contractName}.`,
+    )
+  }
+  const seen = new Set((primary.abi as AbiEntry[]).map(signature))
+  const extra = (other.abi as AbiEntry[]).filter((e) => !seen.has(signature(e)))
+  return { ...primary, abi: [...primary.abi, ...extra] }
+}
+
+async function fetchOne(source: Source): Promise<Fetched> {
   const proxy = await getSmartContract(source.chainId, source.address)
   let target = proxy
   let implementation: string | undefined
@@ -120,6 +150,11 @@ function body(f: Fetched): string {
   const lines = [
     `// Contract: ${f.contractName}`,
     `// Source: ${f.source.address} (chain ${f.source.chainId})`,
+    ...(f.source.mergeFrom
+      ? [
+          `// Merged: entries only in ${f.source.mergeFrom.address} (chain ${f.source.mergeFrom.chainId}) appended`,
+        ]
+      : []),
     ...(f.implementation ? [`// Implementation: ${f.implementation}`] : []),
     ...(f.patch ? [`// Patched: ${f.patch}`] : []),
     '',

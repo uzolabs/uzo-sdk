@@ -96,8 +96,14 @@ bundled yet.
 `permit2` is the BDEX Permit2 deployment on each network, the one its Universal Router calls. It is
 not the canonical Uniswap address.
 
-Older bridge implementations emitted `ExecuteEvent` and `Refunded` with fewer arguments. To decode
-historical bridge logs, combine `botBridgeAbi` with `botBridgeLegacyEventsAbi`.
+`botBridgeLegacyEventsAbi` is for decoding historical bridge logs only. Older bridge
+implementations emitted `ExecuteEvent` and `Refunded` with fewer arguments, so combine it with
+`botBridgeAbi` when reading logs from the bridge's deployment block onward. Do not use it to build
+transactions.
+
+`universalRouterAbi` merges the mainnet and testnet deployments. Testnet adds three errors
+(`InvalidHopSlippageLength`, `V4TooLittleReceivedPerHop`, `V4TooMuchRequestedPerHop`), so reverts
+from either network decode.
 
 ### explorer
 
