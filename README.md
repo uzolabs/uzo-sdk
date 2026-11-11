@@ -207,14 +207,14 @@ How it works:
 
 - **The fee is USDT only.** It is taken out of `amount`: `amount * feeBps / 10000`, raised to
   the minimum fee (currently 1 USDT) when it is above 0. The rate is read per route (10 bps at the time of writing). The
-  recipient gets `receiveAmount`. No BOT is charged, and `deposit.value` is always 0.
+  bridged value is `receiveAmount` (`amount - fee`). No BOT is charged, and `deposit.value` is always 0.
 - **Exact approval.** The contract pulls `amount` in total (the bridged part plus the fee), so
   the approve is for exactly `amount`, never more.
 - **Recipients.** EVM destinations take a 0x address. Tron and Nile take a base58 `T...`
   address with a valid checksum; a 0x address is rejected for Tron. The zero address is always
   rejected.
-- **Decimals.** `receiveAmount` is in BOT Chain USDT units (6 decimals). BSC USDT has 18, so
-  the same value arrives there rescaled.
+- **Decimals.** `receiveAmount` is in BOT Chain USDT base units (6 decimals). The recipient
+  receives the same value expressed in the destination token's decimals (for example 18 on BSC).
 - **BOT gas** (native BOT paid out on arrival, with its cost in USDT deducted) only applies to
   deposits into BOT Chain, so there is no option for it here.
 - The contract also blocks blacklisted senders and recipients, which the SDK cannot see, and
