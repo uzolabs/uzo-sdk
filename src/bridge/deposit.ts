@@ -21,7 +21,10 @@ export type BridgeDepositCalls = {
 export type PreparedBridgeDeposit = BridgeDepositCalls & {
   /** Fee taken from the USDT amount, in USDT base units. No BOT is charged. */
   fee: bigint
-  /** USDT that leaves for the destination, `amount - fee`, in BOT Chain USDT base units (6 decimals). */
+  /**
+   * `amount - fee`, in BOT Chain USDT base units (6 decimals). The recipient receives the same
+   * value expressed in the destination token's decimals (for example 18 on BSC).
+   */
   receiveAmount: bigint
   /** The route's fee rate in basis points, before the minimum fee is applied. */
   feeBps: bigint
@@ -114,8 +117,10 @@ export function buildBridgeDeposit({
  * `AMOUNT_NOT_ABOVE_FEE` or `TOKEN_MISMATCH`.
  *
  * **The fee** is charged in USDT only, out of `amount`. It is `amount * feeBps / 10000`,
- * raised to the minimum fee when it is above 0. The recipient gets `receiveAmount`, in the
- * destination's USDT decimals (BSC USDT has 18). No BOT is charged and `value` is always 0.
+ * raised to the minimum fee when it is above 0. `receiveAmount` is `amount - fee` in BOT Chain
+ * USDT base units (6 decimals); the recipient receives the same value expressed in the
+ * destination token's decimals (for example 18 on BSC). No BOT is charged and `value` is
+ * always 0.
  *
  * State can change between this call and the user signing, and the contract also blocks
  * blacklisted senders and recipients, which the SDK cannot see. The contract's own checks
@@ -186,6 +191,10 @@ export async function prepareBridgeDeposit(
     )
   }
 
+  // Mirrors BotBridge._computeFeeAmounts in the verified source (feeBps comes from
+  // Bridge.chainAndTokenFee in BotBridge._deposit): feeAmount = amount * feeBps / 10000; only
+  // when feeAmount > 0 is it raised to Bridge.minFee() (scaled to USDT decimals), so a feeBps of
+  // 0 gives a fee of 0; then it requires amount > fee.
   const rawFee = (amount * feeBps) / 10_000n
   const fee = rawFee > 0n && rawFee < limits.minFee ? limits.minFee : rawFee
   if (amount <= fee) {

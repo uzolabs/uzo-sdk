@@ -23,6 +23,8 @@ const { approve, deposit, fee, receiveAmount } = await prepareBridgeDeposit(clie
   recipient: '0x000000000000000000000000000000000000dEaD',
   amount: limits.minAmount,
 })
-console.log(`Fee ${usdt(fee)}, recipient gets ${usdt(receiveAmount)}`)
+// receiveAmount is in BOT Chain USDT base units (6 decimals). The recipient receives the same
+// value expressed in the destination token's decimals (for example 18 on BSC).
+console.log(`Fee ${usdt(fee)}, recipient receives ${usdt(receiveAmount)}`)
 // Send approve first, wait for it, then deposit, from the user's wallet.
 console.log({ approve, deposit })
