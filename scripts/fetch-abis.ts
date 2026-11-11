@@ -6,6 +6,9 @@
  *
  * Check mode catches proxy upgrades: if the bridge router points at a new
  * implementation, or its ABI changes, the check fails.
+ *
+ * PATCHES lists the only hand changes. Each one is applied after the fetch, named in
+ * the file header, and fails loudly if the explorer ABI no longer has the expected shape.
  */
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -18,9 +21,15 @@ const EXPLORER_API = {
   968: botChainTestnet.blockExplorers.default.apiUrl,
 } as const
 
-type Source = { name: string; chainId: 677 | 968; address: string }
+type Source = {
+  name: string
+  chainId: 677 | 968
+  address: string
+  /** A second deployment whose ABI entries missing from the primary are appended. */
+  mergeFrom?: { chainId: 677 | 968; address: string }
+}
 
-// Mainnet by default. Testnet only for contracts that exist only there.
+// Mainnet by default. One source merges in a second deployment, noted inline.
 const SOURCES: Source[] = [
   { name: 'wbot', chainId: 677, address: addresses[677].wbot },
   { name: 'bdexV2Factory', chainId: 677, address: addresses[677].bdexV2Factory },
@@ -29,9 +38,38 @@ const SOURCES: Source[] = [
   { name: 'bdexV3QuoterV2', chainId: 677, address: addresses[677].bdexV3QuoterV2 },
   { name: 'bdexV3SwapRouter', chainId: 677, address: addresses[677].bdexV3SwapRouter },
   { name: 'permit2', chainId: 677, address: addresses[677].permit2 },
-  { name: 'universalRouter', chainId: 968, address: addresses[968].universalRouter },
+  // Testnet runs a newer build whose ABI is the mainnet ABI plus three custom errors
+  // (InvalidHopSlippageLength, V4TooLittleReceivedPerHop, V4TooMuchRequestedPerHop).
+  // Functions and events are identical. The merged ABI decodes reverts from both
+  // networks, and the drift check watches both contracts.
+  {
+    name: 'universalRouter',
+    chainId: 677,
+    address: addresses[677].universalRouter,
+    mergeFrom: { chainId: 968, address: addresses[968].universalRouter },
+  },
   { name: 'botBridge', chainId: 677, address: addresses[677].bridgeRouter },
 ]
+
+type AbiEntry = { type?: string; name?: string; inputs?: { name?: string; type?: string }[] }
+type Patch = { note: string; apply: (abi: AbiEntry[]) => void }
+
+const PATCHES: Record<string, Patch> = {
+  bdexV2Factory: {
+    // The verified source is the original UniswapV2Factory, which leaves this argument
+    // unnamed. viem then decodes PairCreated args as an array instead of an object.
+    // The name does not change the event signature or topic0.
+    note: 'PairCreated uint256 argument named allPairsLength (unnamed in the verified source).',
+    apply(abi) {
+      const event = abi.find((e) => e.type === 'event' && e.name === 'PairCreated')
+      const arg = event?.inputs?.[3]
+      if (arg?.type !== 'uint256' || arg.name !== '') {
+        throw new Error('bdexV2Factory PairCreated no longer has an unnamed uint256 at index 3.')
+      }
+      arg.name = 'allPairsLength'
+    },
+  },
+}
 
 const OUT_DIR = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'src', 'contracts', 'abis')
 
@@ -50,9 +88,33 @@ async function getSmartContract(chainId: 677 | 968, address: string): Promise<Sm
   return (await res.json()) as SmartContract
 }
 
-type Fetched = { source: Source; contractName: string; implementation?: string; abi: unknown[] }
+type Fetched = {
+  source: Source
+  contractName: string
+  implementation?: string
+  patch?: string
+  abi: unknown[]
+}
+
+function signature(entry: AbiEntry): string {
+  return `${entry.type} ${entry.name ?? ''}(${(entry.inputs ?? []).map((i) => i.type).join(',')})`
+}
 
 async function fetchAbi(source: Source): Promise<Fetched> {
+  const primary = await fetchOne(source)
+  if (!source.mergeFrom) return primary
+  const other = await fetchOne({ name: source.name, ...source.mergeFrom })
+  if (other.contractName !== primary.contractName) {
+    throw new Error(
+      `${source.name}: cannot merge ${other.contractName} into ${primary.contractName}.`,
+    )
+  }
+  const seen = new Set((primary.abi as AbiEntry[]).map(signature))
+  const extra = (other.abi as AbiEntry[]).filter((e) => !seen.has(signature(e)))
+  return { ...primary, abi: [...primary.abi, ...extra] }
+}
+
+async function fetchOne(source: Source): Promise<Fetched> {
   const proxy = await getSmartContract(source.chainId, source.address)
   let target = proxy
   let implementation: string | undefined
@@ -72,10 +134,13 @@ async function fetchAbi(source: Source): Promise<Fetched> {
       `${source.name} (${where} on chain ${source.chainId}) is not verified on BOTScan. Verify it before regenerating ABIs.`,
     )
   }
+  const patch = PATCHES[source.name]
+  patch?.apply(target.abi as AbiEntry[])
   return {
     source,
     contractName: target.name ?? source.name,
     ...(implementation ? { implementation } : {}),
+    ...(patch ? { patch: patch.note } : {}),
     abi: target.abi,
   }
 }
@@ -85,7 +150,13 @@ function body(f: Fetched): string {
   const lines = [
     `// Contract: ${f.contractName}`,
     `// Source: ${f.source.address} (chain ${f.source.chainId})`,
+    ...(f.source.mergeFrom
+      ? [
+          `// Merged: entries only in ${f.source.mergeFrom.address} (chain ${f.source.mergeFrom.chainId}) appended`,
+        ]
+      : []),
     ...(f.implementation ? [`// Implementation: ${f.implementation}`] : []),
+    ...(f.patch ? [`// Patched: ${f.patch}`] : []),
     '',
     `export const ${f.source.name}Abi = ${JSON.stringify(f.abi, null, 2)} as const`,
     '',

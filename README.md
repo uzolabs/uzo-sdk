@@ -43,7 +43,7 @@ Swap `botChain` for `botChainTestnet` to use testnet.
 | `@uzolabs/sdk/chains`    | `botChain`, `botChainTestnet`            | Available      |
 | `@uzolabs/sdk/contracts` | Addresses, constants, typed ABIs         | Available      |
 | `@uzolabs/sdk/explorer`  | BOTScan API client                       | Available      |
-| `@uzolabs/sdk/bdex`      | BDEX V2/V3 quotes, swaps, Routing API    | Planned, 0.3.0 |
+| `@uzolabs/sdk/bdex`      | BDEX V2/V3 quotes and swaps              | Planned, 0.3.0 |
 | `@uzolabs/sdk/bridge`    | USDT bridge reads and deposits           | Planned, 0.4.0 |
 | `@uzolabs/sdk/paymaster` | EOA paymaster client                     | Planned, 0.5.0 |
 
@@ -87,6 +87,23 @@ const [, usdtOut] = await client.readContract({
 
 ABIs are generated from verified contracts on BOTScan by `scripts/fetch-abis.ts`. CI fails if the
 committed ABIs drift from the explorer, which catches proxy upgrades. ERC-20 uses viem's `erc20Abi`.
+An integration test checks every event's topic0 against a real log on chain.
+
+`addresses` also lists the StakeHub (`stakeHub`) and govBOT (`govBOT`) system contracts and the
+Uzo Deploy factories (`uzoTokenFactory`, `uzoNftFactory`, `uzoTipJarFactory`). Their ABIs are not
+bundled yet.
+
+`permit2` is the BDEX Permit2 deployment on each network, the one its Universal Router calls. It is
+not the canonical Uniswap address.
+
+`botBridgeLegacyEventsAbi` is for decoding historical bridge logs only. Older bridge
+implementations emitted `ExecuteEvent` and `Refunded` with fewer arguments, so combine it with
+`botBridgeAbi` when reading logs from the bridge's deployment block onward. Do not use it to build
+transactions.
+
+`universalRouterAbi` merges the mainnet and testnet deployments. Testnet adds three errors
+(`InvalidHopSlippageLength`, `V4TooLittleReceivedPerHop`, `V4TooMuchRequestedPerHop`), so reverts
+from either network decode.
 
 ### explorer
 
@@ -126,8 +143,7 @@ More runnable scripts live in [`examples/`](./examples).
 - **`eth_getLogs` is disabled** on the public mainnet RPC (`https://rpc.botchain.ai`). Use the BOTScan API or your own RPC for event queries.
 - **No public WebSocket RPC.** Pass your own `webSocket` transport if you need subscriptions.
 - **No confirmed paymaster** for chain 677. The paymaster client (0.5.0) will require you to supply a URL.
-- **Routing API URL required.** The BDEX Routing API base URL is not published, so the routing client (0.3.0) will require it as config.
-- **No mainnet Universal Router address.** It is not confirmed, so `addresses[677]` does not list one. Testnet has `addresses[968].universalRouter`.
+- **No routing client yet.** The BDEX Routing API base URL is not published, so the routing client will ship in a later release once one exists.
 - **External bridge gateways are experimental.** `EXTERNAL_BRIDGE` lists the Ethereum and BSC addresses, but their ABIs are not published, so the SDK does not call them.
 - **Bridge in from other chains is not supported yet.** The bridge module (0.4.0) supports BOT Chain as the source only.
 

@@ -34,9 +34,9 @@ async function main() {
   }
 
   for (const [id, proxies] of Object.entries(knownImplementations)) {
-    const chainId = Number(id) as 677
+    const chainId = Number(id) as 677 | 968
     for (const [key, expected] of Object.entries(proxies)) {
-      const proxy = addresses[chainId][key as keyof (typeof addresses)[677]]
+      const proxy = addresses[chainId][key as keyof (typeof addresses)[typeof chainId]]
       const slot = await clients[chainId].getStorageAt({
         address: proxy,
         slot: EIP1967_IMPLEMENTATION_SLOT,
