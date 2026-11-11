@@ -43,7 +43,7 @@ Swap `botChain` for `botChainTestnet` to use testnet.
 | `@uzolabs/sdk/chains`    | `botChain`, `botChainTestnet`            | Available      |
 | `@uzolabs/sdk/contracts` | Addresses, constants, typed ABIs         | Available      |
 | `@uzolabs/sdk/explorer`  | BOTScan API client                       | Available      |
-| `@uzolabs/sdk/bdex`      | BDEX V2/V3 quotes and swaps              | Planned, 0.3.0 |
+| `@uzolabs/sdk/bdex`      | BDEX V2/V3 quotes and swaps              | Available      |
 | `@uzolabs/sdk/bridge`    | USDT bridge reads and deposits           | Planned, 0.4.0 |
 | `@uzolabs/sdk/paymaster` | EOA paymaster client                     | Planned, 0.5.0 |
 
@@ -105,6 +105,62 @@ transactions.
 (`InvalidHopSlippageLength`, `V4TooLittleReceivedPerHop`, `V4TooMuchRequestedPerHop`), so reverts
 from either network decode.
 
+### bdex
+
+On-chain quotes and unsigned swap and approval calls for BDEX. Every builder returns a
+`TxRequest` (`{ to, data, value }`) for the user's wallet to sign and send. The SDK never signs
+and never touches keys.
+
+```ts
+import {
+  applySlippage,
+  buildErc20Approve,
+  buildSwapExactTokensForTokensV2,
+  getAmountsOutV2,
+} from '@uzolabs/sdk/bdex'
+import { addresses } from '@uzolabs/sdk/contracts'
+
+const { usdt, wbot, bdexV2Router02 } = addresses[677]
+const amountIn = 1_000_000n // 1 USDT
+
+const quoted = (await getAmountsOutV2(client, { amountIn, path: [usdt, wbot] })).at(-1)!
+
+const approve = buildErc20Approve({ chainId: 677, token: usdt, spender: bdexV2Router02, amount: amountIn })
+const swap = buildSwapExactTokensForTokensV2({
+  chainId: 677,
+  amountIn,
+  amountOutMin: applySlippage(quoted), // 0.5% below the quote
+  path: [usdt, wbot],
+  to: account,
+  deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
+})
+
+await walletClient.sendTransaction(approve)
+await walletClient.sendTransaction(swap)
+```
+
+| Function                          | What it does                                                    |
+| --------------------------------- | --------------------------------------------------------------- |
+| `getAmountsOutV2`                 | V2 quote via `Router02.getAmountsOut`                           |
+| `buildSwapExactTokensForTokensV2` | Unsigned V2 swap, always to the network's Router02              |
+| `getFeeTiersV3`                   | Enabled V3 fee tiers and tick spacing, read from the factory    |
+| `getPoolV3`                       | V3 pool address from the factory, or `null`                     |
+| `quoteExactInputSingleV3`         | V3 quote via QuoterV2, simulated with `eth_call`                |
+| `buildExactInputSingleV3`         | Unsigned V3 swap, always to the network's SwapRouter            |
+| `buildErc20Approve`               | Unsigned ERC-20 approve to a BDEX router or Permit2             |
+| `buildPermit2Approve`             | Unsigned `Permit2.approve` for a BDEX router, normally the Universal Router |
+| `applySlippage`                   | Minimum output after slippage                                   |
+
+Safety rules:
+
+- **Slippage** defaults to 0.5%. Anything above 5% throws `SlippageTooHighError`. The cap has no opt-out.
+- **Approved routers only.** Swaps always target the BDEX V2 Router02 or V3 SwapRouter from
+  `addresses`. Approvals only go to those routers, the Universal Router or Permit2 on the same
+  network. Any other spender throws `RouterNotAllowedError`.
+- **No zero minimums.** `amountOutMin` and `amountOutMinimum` must be above 0.
+- **Fee tiers are read on chain.** Mainnet and testnet enable different tiers, so the SDK never hard-codes them.
+- The client must be built with `botChain` or `botChainTestnet`. Reads use `eth_call` only, never `eth_getLogs`.
+
 ### explorer
 
 ```ts
@@ -143,7 +199,7 @@ More runnable scripts live in [`examples/`](./examples).
 - **`eth_getLogs` is disabled** on the public mainnet RPC (`https://rpc.botchain.ai`). Use the BOTScan API or your own RPC for event queries.
 - **No public WebSocket RPC.** Pass your own `webSocket` transport if you need subscriptions.
 - **No confirmed paymaster** for chain 677. The paymaster client (0.5.0) will require you to supply a URL.
-- **No routing client yet.** The BDEX Routing API base URL is not published, so the routing client will ship in a later release once one exists.
+- **No routing client.** The BDEX Routing API base URL is not published. `@uzolabs/sdk/bdex` quotes single V2 paths and single V3 pools on chain; it does not split or route across pools.
 - **External bridge gateways are experimental.** `EXTERNAL_BRIDGE` lists the Ethereum and BSC addresses, but their ABIs are not published, so the SDK does not call them.
 - **Bridge in from other chains is not supported yet.** The bridge module (0.4.0) supports BOT Chain as the source only.
 

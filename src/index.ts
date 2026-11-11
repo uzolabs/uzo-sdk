@@ -1,3 +1,4 @@
+export * from './bdex'
 export * from './chains'
 export * from './contracts'
 export * from './explorer'
