@@ -40,6 +40,16 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./bdex": {
+      "import": {
+        "types": "./dist/bdex/index.d.ts",
+        "default": "./dist/bdex/index.js"
+      },
+      "require": {
+        "types": "./dist/bdex/index.d.cts",
+        "default": "./dist/bdex/index.cjs"
+      }
+    },
     "./chains": {
       "import": {
         "types": "./dist/chains/index.d.ts",

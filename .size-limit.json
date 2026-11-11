@@ -24,6 +24,14 @@
     "gzip": true
   },
   {
+    "name": "@uzolabs/sdk/bdex",
+    "path": "dist/bdex/index.js",
+    "import": "*",
+    "ignore": ["viem", "viem/actions"],
+    "limit": "4 KB",
+    "gzip": true
+  },
+  {
     "name": "@uzolabs/sdk/explorer",
     "path": "dist/explorer/index.js",
     "import": "{ createExplorerClient }",

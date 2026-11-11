@@ -89,7 +89,7 @@ export class SlippageTooHighError extends UzoError {
   constructor(slippageBps: number, maxBps: number) {
     super(
       'SLIPPAGE_TOO_HIGH',
-      `Slippage of ${slippageBps} bps is above the ${maxBps} bps maximum. Lower it, or opt out of the limit explicitly.`,
+      `Slippage of ${slippageBps} bps is above the ${maxBps} bps maximum. Lower it to ${maxBps} bps or less.`,
     )
     this.slippageBps = slippageBps
     this.maxBps = maxBps
