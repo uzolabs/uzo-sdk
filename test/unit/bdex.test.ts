@@ -27,7 +27,9 @@ import { RouterNotAllowedError, SlippageTooHighError, UzoError } from '../../src
 
 // Test-only placeholder recipient. Not a real account.
 const user = '0x000000000000000000000000000000000000dEaD' as const
-const deadline = 2_000_000_000n
+type V3Params = { amountOutMinimum: bigint }
+const nowSeconds = () => BigInt(Math.floor(Date.now() / 1000))
+const deadline = nowSeconds() + 1200n
 
 describe('bdex ABI fragments', () => {
   const sources: [string, Abi, Abi][] = [
@@ -85,56 +87,122 @@ describe('applySlippage', () => {
 describe.each([677, 968] as const)('builders on chain %i', (chainId) => {
   const book = addresses[chainId]
 
+  const v2Base = {
+    chainId,
+    amountIn: 1_000_000n,
+    quotedAmountOut: 10_000n,
+    path: [book.usdt, book.wbot],
+    to: user,
+    deadline,
+  }
+  const v3Base = {
+    chainId,
+    tokenIn: book.usdt,
+    tokenOut: book.wbot,
+    fee: 3000,
+    amountIn: 5n,
+    quotedAmountOut: 10_000n,
+    recipient: user,
+    deadline,
+  }
+  const v2Min = (data: `0x${string}`) =>
+    decodeFunctionData({ abi: bdexV2Router02Abi, data }).args?.[1]
+  const v3Min = (data: `0x${string}`) =>
+    (decodeFunctionData({ abi: bdexV3SwapRouterAbi, data }).args as unknown as [V3Params])[0]
+      .amountOutMinimum
+
   it('buildSwapExactTokensForTokensV2 targets Router02 and round-trips', () => {
     const tx = buildSwapExactTokensForTokensV2({
-      chainId,
-      amountIn: 1_000_000n,
-      amountOutMin: 1n,
+      ...v2Base,
       path: [book.usdt.toLowerCase() as `0x${string}`, book.wbot],
-      to: user,
-      deadline,
     })
     expect(tx.to).toBe(book.bdexV2Router02)
     expect(tx.value).toBe(0n)
     const { functionName, args } = decodeFunctionData({ abi: bdexV2Router02Abi, data: tx.data })
     expect(functionName).toBe('swapExactTokensForTokens')
-    expect(args).toEqual([1_000_000n, 1n, [book.usdt, book.wbot], user, deadline])
+    expect(args).toEqual([1_000_000n, 9_950n, [book.usdt, book.wbot], user, deadline])
+  })
+
+  it.each([undefined, 0, 0.3, 1, 5])(
+    'swap builders encode exactly applySlippage(quotedAmountOut) at %s%%',
+    (slippageTolerance) => {
+      const quotedAmountOut = 123_456_789n
+      const opts = slippageTolerance === undefined ? {} : { slippageTolerance }
+      const expected = applySlippage(quotedAmountOut, opts)
+      expect(
+        v2Min(buildSwapExactTokensForTokensV2({ ...v2Base, ...opts, quotedAmountOut }).data),
+      ).toBe(expected)
+      expect(v3Min(buildExactInputSingleV3({ ...v3Base, ...opts, quotedAmountOut }).data)).toBe(
+        expected,
+      )
+    },
+  )
+
+  it('swap builders throw SlippageTooHighError above 5%', () => {
+    expect(() => buildSwapExactTokensForTokensV2({ ...v2Base, slippageTolerance: 5.01 })).toThrow(
+      SlippageTooHighError,
+    )
+    expect(() => buildExactInputSingleV3({ ...v3Base, slippageTolerance: 5.01 })).toThrow(
+      SlippageTooHighError,
+    )
+  })
+
+  it('swap builders accept no raw minimum', () => {
+    expect(() =>
+      // @ts-expect-error amountOutMin is not a parameter
+      buildSwapExactTokensForTokensV2({ ...v2Base, amountOutMin: 1n }),
+    ).toThrow(/amountOutMin is not accepted/)
+    expect(() =>
+      // @ts-expect-error amountOutMinimum is not a parameter
+      buildExactInputSingleV3({ ...v3Base, amountOutMinimum: 1n }),
+    ).toThrow(/amountOutMinimum is not accepted/)
+    // Even alongside a valid quote, a raw minimum is refused rather than ignored.
+    expect(() =>
+      // @ts-expect-error amountOutMinimum is not a parameter
+      buildExactInputSingleV3({ ...v3Base, amountOutMinimum: 1n, slippageTolerance: 0 }),
+    ).toThrow(UzoError)
+  })
+
+  it('swap builders reject a quote whose minimum rounds to 0', () => {
+    expect(() => buildSwapExactTokensForTokensV2({ ...v2Base, quotedAmountOut: 1n })).toThrow(
+      /amountOutMin rounds down to 0/,
+    )
+    expect(() => buildExactInputSingleV3({ ...v3Base, quotedAmountOut: 0n })).toThrow(
+      /quotedAmountOut/,
+    )
+  })
+
+  it.each([
+    ['in the past', () => nowSeconds() - 1n, /deadline is in the past/],
+    ['now', () => nowSeconds(), /deadline is in the past/],
+    ['over 1 hour ahead', () => nowSeconds() + 3700n, /deadline is more than 1 hour ahead/],
+    ['in milliseconds', () => BigInt(Date.now() + 60_000), /deadline is more than 1 hour ahead/],
+  ])('swap builders reject a deadline %s', (_label, make, message) => {
+    expect(() => buildSwapExactTokensForTokensV2({ ...v2Base, deadline: make() })).toThrow(message)
+    expect(() => buildExactInputSingleV3({ ...v3Base, deadline: make() })).toThrow(message)
+  })
+
+  it('swap builders accept a deadline up to 1 hour ahead', () => {
+    const atLimit = nowSeconds() + 3590n
+    expect(buildSwapExactTokensForTokensV2({ ...v2Base, deadline: atLimit }).to).toBe(
+      book.bdexV2Router02,
+    )
   })
 
   it('buildSwapExactTokensForTokensV2 rejects bad input', () => {
-    const base = {
-      chainId,
-      amountIn: 1n,
-      amountOutMin: 1n,
-      path: [book.usdt, book.wbot],
-      to: user,
-      deadline,
-    }
-    expect(() => buildSwapExactTokensForTokensV2({ ...base, amountOutMin: 0n })).toThrow(
-      /amountOutMin/,
-    )
+    const base = v2Base
     expect(() => buildSwapExactTokensForTokensV2({ ...base, amountIn: 0n })).toThrow(/amountIn/)
     expect(() => buildSwapExactTokensForTokensV2({ ...base, path: [book.usdt] })).toThrow(/path/)
     expect(() =>
       buildSwapExactTokensForTokensV2({ ...base, path: [book.usdt, book.usdt] }),
     ).toThrow(/path/)
     expect(() => buildSwapExactTokensForTokensV2({ ...base, to: '0x123' })).toThrow(UzoError)
-    expect(() => buildSwapExactTokensForTokensV2({ ...base, deadline: 0n })).toThrow(/deadline/)
     // @ts-expect-error unsupported chain
     expect(() => buildSwapExactTokensForTokensV2({ ...base, chainId: 1 })).toThrow(UzoError)
   })
 
   it('buildExactInputSingleV3 targets SwapRouter and round-trips', () => {
-    const tx = buildExactInputSingleV3({
-      chainId,
-      tokenIn: book.usdt,
-      tokenOut: book.wbot,
-      fee: 3000,
-      amountIn: 5n,
-      amountOutMinimum: 4n,
-      recipient: user,
-      deadline,
-    })
+    const tx = buildExactInputSingleV3(v3Base)
     expect(tx.to).toBe(book.bdexV3SwapRouter)
     const { functionName, args } = decodeFunctionData({ abi: bdexV3SwapRouterAbi, data: tx.data })
     expect(functionName).toBe('exactInputSingle')
@@ -146,26 +214,14 @@ describe.each([677, 968] as const)('builders on chain %i', (chainId) => {
         recipient: user,
         deadline,
         amountIn: 5n,
-        amountOutMinimum: 4n,
+        amountOutMinimum: 9_950n,
         sqrtPriceLimitX96: 0n,
       },
     ])
   })
 
   it('buildExactInputSingleV3 rejects bad input', () => {
-    const base = {
-      chainId,
-      tokenIn: book.usdt,
-      tokenOut: book.wbot,
-      fee: 3000,
-      amountIn: 5n,
-      amountOutMinimum: 4n,
-      recipient: user,
-      deadline,
-    }
-    expect(() => buildExactInputSingleV3({ ...base, amountOutMinimum: 0n })).toThrow(
-      /amountOutMinimum/,
-    )
+    const base = v3Base
     expect(() => buildExactInputSingleV3({ ...base, fee: 2 ** 24 })).toThrow(/fee/)
     expect(() => buildExactInputSingleV3({ ...base, fee: 1.5 })).toThrow(/fee/)
     expect(() => buildExactInputSingleV3({ ...base, tokenOut: book.usdt })).toThrow(/tokenOut/)

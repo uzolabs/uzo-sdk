@@ -39,7 +39,9 @@ for (const { fee } of await getFeeTiersV3(client)) {
   }
 }
 
-// Unsigned calls for the user's wallet. 0.5% default slippage, 5% hard cap.
+// Unsigned calls for the user's wallet. The swap builder takes the quote and computes the
+// minimum itself: 0.5% default slippage, 5% hard cap. applySlippage is only for display here.
+console.log(`Minimum received at 0.5%: ${formatUnits(applySlippage(v2Out), 18)} WBOT`)
 const approve = buildErc20Approve({
   chainId: 677,
   token: usdt,
@@ -49,9 +51,9 @@ const approve = buildErc20Approve({
 const swap = buildSwapExactTokensForTokensV2({
   chainId: 677,
   amountIn,
-  amountOutMin: applySlippage(v2Out),
+  quotedAmountOut: v2Out,
   path: [usdt, wbot],
   to: recipient,
-  deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
+  deadline: BigInt(Math.floor(Date.now() / 1000) + 1200), // at most 1 hour ahead
 })
 console.log({ approve, swap })

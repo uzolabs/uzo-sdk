@@ -113,7 +113,6 @@ and never touches keys.
 
 ```ts
 import {
-  applySlippage,
   buildErc20Approve,
   buildSwapExactTokensForTokensV2,
   getAmountsOutV2,
@@ -123,13 +122,14 @@ import { addresses } from '@uzolabs/sdk/contracts'
 const { usdt, wbot, bdexV2Router02 } = addresses[677]
 const amountIn = 1_000_000n // 1 USDT
 
-const quoted = (await getAmountsOutV2(client, { amountIn, path: [usdt, wbot] })).at(-1)!
+const quotedAmountOut = (await getAmountsOutV2(client, { amountIn, path: [usdt, wbot] })).at(-1)!
 
 const approve = buildErc20Approve({ chainId: 677, token: usdt, spender: bdexV2Router02, amount: amountIn })
 const swap = buildSwapExactTokensForTokensV2({
   chainId: 677,
   amountIn,
-  amountOutMin: applySlippage(quoted), // 0.5% below the quote
+  quotedAmountOut, // the minimum is computed from this, 0.5% below by default
+  // slippageTolerance: 1, // optional, percent, 5 at most
   path: [usdt, wbot],
   to: account,
   deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
@@ -142,22 +142,25 @@ await walletClient.sendTransaction(swap)
 | Function                          | What it does                                                    |
 | --------------------------------- | --------------------------------------------------------------- |
 | `getAmountsOutV2`                 | V2 quote via `Router02.getAmountsOut`                           |
-| `buildSwapExactTokensForTokensV2` | Unsigned V2 swap, always to the network's Router02              |
+| `buildSwapExactTokensForTokensV2` | Unsigned V2 swap from a quote, always to the network's Router02 |
 | `getFeeTiersV3`                   | Enabled V3 fee tiers and tick spacing, read from the factory    |
 | `getPoolV3`                       | V3 pool address from the factory, or `null`                     |
 | `quoteExactInputSingleV3`         | V3 quote via QuoterV2, simulated with `eth_call`                |
-| `buildExactInputSingleV3`         | Unsigned V3 swap, always to the network's SwapRouter            |
+| `buildExactInputSingleV3`         | Unsigned V3 swap from a quote, always to the network's SwapRouter |
 | `buildErc20Approve`               | Unsigned ERC-20 approve to a BDEX router or Permit2             |
 | `buildPermit2Approve`             | Unsigned `Permit2.approve` for a BDEX router, normally the Universal Router |
-| `applySlippage`                   | Minimum output after slippage                                   |
+| `applySlippage`                   | Minimum output after slippage, for display                      |
 
 Safety rules:
 
-- **Slippage** defaults to 0.5%. Anything above 5% throws `SlippageTooHighError`. The cap has no opt-out.
+- **Slippage** defaults to 0.5%. Anything above 5% throws `SlippageTooHighError`. Swap builders
+  take `quotedAmountOut` and an optional `slippageTolerance` and compute the minimum themselves.
+  They accept no raw minimum, so the cap has no opt-out on any swap builder.
 - **Approved routers only.** Swaps always target the BDEX V2 Router02 or V3 SwapRouter from
   `addresses`. Approvals only go to those routers, the Universal Router or Permit2 on the same
   network. Any other spender throws `RouterNotAllowedError`.
-- **No zero minimums.** `amountOutMin` and `amountOutMinimum` must be above 0.
+- **No zero minimums.** If the computed minimum rounds down to 0, the builder throws.
+- **Deadlines** must be in the future and at most 1 hour ahead, in seconds. Milliseconds are rejected.
 - **Fee tiers are read on chain.** Mainnet and testnet enable different tiers, so the SDK never hard-codes them.
 - The client must be built with `botChain` or `botChainTestnet`. Reads use `eth_call` only, never `eth_getLogs`.
 

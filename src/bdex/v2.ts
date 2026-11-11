@@ -8,6 +8,8 @@ import {
   assertDeadline,
   clientChainId,
   invalidArgument,
+  minimumOut,
+  rejectRawMinimum,
   type TxRequest,
 } from './shared'
 
@@ -60,15 +62,18 @@ export async function getAmountsOutV2(
  * Builds an unsigned `Router02.swapExactTokensForTokens` call. The target is always the
  * BDEX V2 Router02 for `chainId`. Approve that router for `amountIn` of `path[0]` first.
  *
- * `amountOutMin` must be above 0. Use `applySlippage` on a fresh quote to get it.
+ * Pass the fresh quote as `quotedAmountOut`. The minimum output is computed with
+ * `applySlippage`: `slippageTolerance` is in percent, defaults to 0.5 and cannot exceed 5.
+ * There is no way to pass a raw minimum. `deadline` must be in the future and at most
+ * 1 hour ahead.
  *
  * @example
  * ```ts
- * const quoted = (await getAmountsOutV2(client, { amountIn, path })).at(-1)!
+ * const quotedAmountOut = (await getAmountsOutV2(client, { amountIn, path })).at(-1)!
  * const tx = buildSwapExactTokensForTokensV2({
  *   chainId: 677,
  *   amountIn,
- *   amountOutMin: applySlippage(quoted),
+ *   quotedAmountOut, // minimum is 0.5% below this
  *   path,
  *   to: account,
  *   deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
@@ -76,21 +81,17 @@ export async function getAmountsOutV2(
  * await walletClient.sendTransaction(tx) // the user's wallet signs
  * ```
  */
-export function buildSwapExactTokensForTokensV2({
-  chainId,
-  amountIn,
-  amountOutMin,
-  path,
-  to,
-  deadline,
-}: {
+export function buildSwapExactTokensForTokensV2(args: {
   chainId: SupportedChainId
   amountIn: bigint
-  amountOutMin: bigint
+  quotedAmountOut: bigint
+  slippageTolerance?: number
   path: readonly Address[]
   to: Address
   deadline: bigint
 }): TxRequest {
+  rejectRawMinimum(args)
+  const { chainId, amountIn, quotedAmountOut, slippageTolerance, path, to, deadline } = args
   assertChainId(chainId)
   return {
     to: addresses[chainId].bdexV2Router02,
@@ -99,7 +100,7 @@ export function buildSwapExactTokensForTokensV2({
       functionName: 'swapExactTokensForTokens',
       args: [
         assertAmount(amountIn, 'amountIn'),
-        assertAmount(amountOutMin, 'amountOutMin'),
+        minimumOut(quotedAmountOut, slippageTolerance, 'amountOutMin'),
         assertPath(path),
         assertAddress(to, 'to'),
         assertDeadline(deadline),

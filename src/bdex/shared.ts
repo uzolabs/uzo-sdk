@@ -12,15 +12,17 @@ export const DEFAULT_SLIPPAGE_TOLERANCE = 0.5
 export const MAX_SLIPPAGE_TOLERANCE = 5
 
 /**
- * Returns the minimum output to accept for a quoted amount, after slippage.
+ * Returns the minimum output to accept for a quoted amount, after slippage. Use it to show
+ * "minimum received" in a UI. The swap builders call it themselves from `quotedAmountOut`,
+ * so you never pass its result to them.
  *
  * `slippageTolerance` is in percent and defaults to 0.5. Anything above 5 throws
  * `SlippageTooHighError`. The cap has no opt-out.
  *
  * @example
  * ```ts
- * const [, quoted] = await getAmountsOutV2(client, { amountIn, path })
- * const amountOutMin = applySlippage(quoted) // 0.5% below the quote
+ * const quoted = (await getAmountsOutV2(client, { amountIn, path })).at(-1)!
+ * const minimumReceived = applySlippage(quoted, { slippageTolerance: 1 }) // 1% below the quote
  * ```
  */
 export function applySlippage(
@@ -92,12 +94,72 @@ export function assertFee(fee: unknown): number {
   return fee
 }
 
-export function assertDeadline(deadline: unknown): bigint {
-  if (typeof deadline !== 'bigint' || deadline <= 0n) {
+/** Latest deadline the swap builders accept, in seconds from now. */
+export const MAX_DEADLINE_SECONDS = 3600
+
+/**
+ * Checks a swap deadline against the current time. It must be in the future and no more
+ * than `MAX_DEADLINE_SECONDS` (1 hour) ahead, so a stale or far-future swap cannot be built.
+ */
+export function assertDeadline(
+  deadline: unknown,
+  now = BigInt(Math.floor(Date.now() / 1000)),
+): bigint {
+  if (typeof deadline !== 'bigint') {
     throw invalidArgument(
       'deadline',
       'must be a unix timestamp in seconds as a bigint, for example now plus 1200n',
     )
   }
+  if (deadline <= now) {
+    throw invalidArgument(
+      'deadline',
+      `is in the past (${deadline} <= now ${now}). Use a unix timestamp in seconds, for example now plus 1200n`,
+    )
+  }
+  if (deadline > now + BigInt(MAX_DEADLINE_SECONDS)) {
+    throw invalidArgument(
+      'deadline',
+      `is more than 1 hour ahead (${deadline} > now ${now} plus ${MAX_DEADLINE_SECONDS}). Use a unix timestamp in seconds, not milliseconds, at most now plus 3600n`,
+    )
+  }
   return deadline
+}
+
+/**
+ * Turns a fresh quote into the swap's minimum output with `applySlippage`, so the 5% cap
+ * applies to every swap builder. Throws when the result rounds down to 0.
+ */
+export function minimumOut(
+  quotedAmountOut: unknown,
+  slippageTolerance: number | undefined,
+  name: string,
+): bigint {
+  const quoted = assertAmount(quotedAmountOut, 'quotedAmountOut')
+  const minimum = applySlippage(
+    quoted,
+    slippageTolerance === undefined ? {} : { slippageTolerance },
+  )
+  if (minimum === 0n) {
+    throw invalidArgument(
+      name,
+      `rounds down to 0 for quotedAmountOut ${quoted}. Quote a larger amountIn or lower slippageTolerance`,
+    )
+  }
+  return minimum
+}
+
+/**
+ * Swap builders take a quote, never a raw minimum. Rejects the raw minimum keys for callers
+ * that bypass the types, so the slippage cap cannot be skipped.
+ */
+export function rejectRawMinimum(args: object): void {
+  for (const key of ['amountOutMin', 'amountOutMinimum']) {
+    if (key in args) {
+      throw invalidArgument(
+        key,
+        'is not accepted. Pass quotedAmountOut and an optional slippageTolerance (percent, 5 at most) instead',
+      )
+    }
+  }
 }

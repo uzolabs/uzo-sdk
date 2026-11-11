@@ -9,6 +9,8 @@ import {
   assertFee,
   clientChainId,
   invalidArgument,
+  minimumOut,
+  rejectRawMinimum,
   type TxRequest,
 } from './shared'
 
@@ -124,7 +126,10 @@ export async function quoteExactInputSingleV3(
  * target is always the BDEX V3 SwapRouter for `chainId`. Approve that router for
  * `amountIn` of `tokenIn` first.
  *
- * `amountOutMinimum` must be above 0. Use `applySlippage` on a fresh quote to get it.
+ * Pass the fresh quote as `quotedAmountOut`. The minimum output is computed with
+ * `applySlippage`: `slippageTolerance` is in percent, defaults to 0.5 and cannot exceed 5.
+ * There is no way to pass a raw minimum. `deadline` must be in the future and at most
+ * 1 hour ahead.
  *
  * @example
  * ```ts
@@ -135,31 +140,35 @@ export async function quoteExactInputSingleV3(
  *   tokenOut,
  *   fee,
  *   amountIn,
- *   amountOutMinimum: applySlippage(amountOut),
+ *   quotedAmountOut: amountOut, // minimum is 0.5% below this
  *   recipient: account,
  *   deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
  * })
  * ```
  */
-export function buildExactInputSingleV3({
-  chainId,
-  tokenIn,
-  tokenOut,
-  fee,
-  amountIn,
-  amountOutMinimum,
-  recipient,
-  deadline,
-}: {
+export function buildExactInputSingleV3(args: {
   chainId: SupportedChainId
   tokenIn: Address
   tokenOut: Address
   fee: number
   amountIn: bigint
-  amountOutMinimum: bigint
+  quotedAmountOut: bigint
+  slippageTolerance?: number
   recipient: Address
   deadline: bigint
 }): TxRequest {
+  rejectRawMinimum(args)
+  const {
+    chainId,
+    tokenIn,
+    tokenOut,
+    fee,
+    amountIn,
+    quotedAmountOut,
+    slippageTolerance,
+    recipient,
+    deadline,
+  } = args
   assertChainId(chainId)
   const params = {
     tokenIn: assertAddress(tokenIn, 'tokenIn'),
@@ -168,7 +177,7 @@ export function buildExactInputSingleV3({
     recipient: assertAddress(recipient, 'recipient'),
     deadline: assertDeadline(deadline),
     amountIn: assertAmount(amountIn, 'amountIn'),
-    amountOutMinimum: assertAmount(amountOutMinimum, 'amountOutMinimum'),
+    amountOutMinimum: minimumOut(quotedAmountOut, slippageTolerance, 'amountOutMinimum'),
     sqrtPriceLimitX96: 0n,
   }
   if (params.tokenIn === params.tokenOut) {
