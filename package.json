@@ -50,6 +50,16 @@
         "default": "./dist/bdex/index.cjs"
       }
     },
+    "./bridge": {
+      "import": {
+        "types": "./dist/bridge/index.d.ts",
+        "default": "./dist/bridge/index.js"
+      },
+      "require": {
+        "types": "./dist/bridge/index.d.cts",
+        "default": "./dist/bridge/index.cjs"
+      }
+    },
     "./chains": {
       "import": {
         "types": "./dist/chains/index.d.ts",
@@ -84,6 +94,9 @@
   },
   "typesVersions": {
     "*": {
+      "bridge": [
+        "./dist/bridge/index.d.cts"
+      ],
       "chains": [
         "./dist/chains/index.d.cts"
       ],

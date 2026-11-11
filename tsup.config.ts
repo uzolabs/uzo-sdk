@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     'bdex/index': 'src/bdex/index.ts',
+    'bridge/index': 'src/bridge/index.ts',
     'chains/index': 'src/chains/index.ts',
     'contracts/index': 'src/contracts/index.ts',
     'explorer/index': 'src/explorer/index.ts',
