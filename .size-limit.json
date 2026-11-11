@@ -32,6 +32,14 @@
     "gzip": true
   },
   {
+    "name": "@uzolabs/sdk/bridge",
+    "path": "dist/bridge/index.js",
+    "import": "*",
+    "ignore": ["viem", "viem/actions"],
+    "limit": "4 KB",
+    "gzip": true
+  },
+  {
     "name": "@uzolabs/sdk/explorer",
     "path": "dist/explorer/index.js",
     "import": "{ createExplorerClient }",

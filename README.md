@@ -44,8 +44,8 @@ Swap `botChain` for `botChainTestnet` to use testnet.
 | `@uzolabs/sdk/contracts` | Addresses, constants, typed ABIs         | Available      |
 | `@uzolabs/sdk/explorer`  | BOTScan API client                       | Available      |
 | `@uzolabs/sdk/bdex`      | BDEX V2/V3 quotes and swaps              | Available      |
-| `@uzolabs/sdk/bridge`    | USDT bridge reads and deposits           | Planned, 0.4.0 |
-| `@uzolabs/sdk/paymaster` | EOA paymaster client                     | Planned, 0.5.0 |
+| `@uzolabs/sdk/bridge`    | USDT bridge status, limits and deposits  | Available      |
+| `@uzolabs/sdk/paymaster` | EOA paymaster client                     | On hold        |
 
 Import from the narrowest subpath you need. `@uzolabs/sdk/chains` is under 2 KB gzipped.
 
@@ -164,6 +164,62 @@ Safety rules:
 - **Fee tiers are read on chain.** Mainnet and testnet enable different tiers, so the SDK never hard-codes them.
 - The client must be built with `botChain` or `botChainTestnet`. Reads use `eth_call` only, never `eth_getLogs`.
 
+### bridge
+
+USDT bridging out of BOT Chain. `prepareBridgeDeposit` reads the bridge's live state, checks
+the deposit against it and returns two unsigned calls for the user's wallet: a USDT approve for
+exactly the deposit amount, then the deposit.
+
+```ts
+import { prepareBridgeDeposit } from '@uzolabs/sdk/bridge'
+
+const { approve, deposit, fee, receiveAmount } = await prepareBridgeDeposit(client, {
+  destinationChainId: 56, // BNB Smart Chain
+  recipient: '0x...', // a T... address for Tron
+  amount: 25_000_000n, // 25 USDT, the fee comes out of this
+})
+
+const hash = await walletClient.sendTransaction(approve)
+await publicClient.waitForTransactionReceipt({ hash })
+await walletClient.sendTransaction(deposit)
+```
+
+It throws `BridgeValidationError` with a `reason` before anything is signed when the bridge or
+USDT bridging is paused, the route is closed, the amount is outside the contract's limits or
+does not cover the fee, or the destination or recipient is invalid.
+
+| Source               | Destinations (`destinationChainId`)                                       |
+| -------------------- | ------------------------------------------------------------------------- |
+| BOT Chain (677)      | Ethereum (1), BNB Smart Chain (56), Tron (728126428)                      |
+| BOT Chain testnet (968) | BSC testnet (97), Sepolia (11155111), Tron Nile (3448148188)           |
+
+| Function                | What it does                                                         |
+| ----------------------- | -------------------------------------------------------------------- |
+| `prepareBridgeDeposit`  | Checks status, route, limits and fee on chain, then builds the calls |
+| `buildBridgeDeposit`    | Builds the calls only. **Does not check status or limits.**          |
+| `getBridgeStatus`       | Whether the bridge or USDT bridging is paused                        |
+| `getBridgeLimits`       | Minimum and maximum deposit and minimum fee, in USDT base units      |
+| `getBotGasConfig`       | The bridge's BOT gas config, for display                             |
+| `encodeBridgeRecipient` | Validates a recipient and encodes it the way the destination expects |
+| `BRIDGE_DESTINATIONS`   | The destinations above, with each one's recipient format             |
+
+How it works:
+
+- **The fee is USDT only.** It is taken out of `amount`: `amount * feeBps / 10000`, raised to
+  the minimum fee (currently 1 USDT) when it is above 0. The rate is read per route (10 bps at the time of writing). The
+  recipient gets `receiveAmount`. No BOT is charged, and `deposit.value` is always 0.
+- **Exact approval.** The contract pulls `amount` in total (the bridged part plus the fee), so
+  the approve is for exactly `amount`, never more.
+- **Recipients.** EVM destinations take a 0x address. Tron and Nile take a base58 `T...`
+  address with a valid checksum; a 0x address is rejected for Tron. The zero address is always
+  rejected.
+- **Decimals.** `receiveAmount` is in BOT Chain USDT units (6 decimals). BSC USDT has 18, so
+  the same value arrives there rescaled.
+- **BOT gas** (native BOT paid out on arrival, with its cost in USDT deducted) only applies to
+  deposits into BOT Chain, so there is no option for it here.
+- The contract also blocks blacklisted senders and recipients, which the SDK cannot see, and
+  state can change before the user signs. Reads use `eth_call` only.
+
 ### explorer
 
 ```ts
@@ -201,10 +257,10 @@ More runnable scripts live in [`examples/`](./examples).
 
 - **`eth_getLogs` is disabled** on the public mainnet RPC (`https://rpc.botchain.ai`). Use the BOTScan API or your own RPC for event queries.
 - **No public WebSocket RPC.** Pass your own `webSocket` transport if you need subscriptions.
-- **No confirmed paymaster** for chain 677. The paymaster client (0.5.0) will require you to supply a URL.
+- **No confirmed paymaster** for chain 677, so there is no paymaster module. It is on hold until one exists.
 - **No routing client.** The BDEX Routing API base URL is not published. `@uzolabs/sdk/bdex` quotes single V2 paths and single V3 pools on chain; it does not split or route across pools.
 - **External bridge gateways are experimental.** `EXTERNAL_BRIDGE` lists the Ethereum and BSC addresses, but their ABIs are not published, so the SDK does not call them.
-- **Bridge in from other chains is not supported yet.** The bridge module (0.4.0) supports BOT Chain as the source only.
+- **Bridge in from other chains is not supported yet.** `@uzolabs/sdk/bridge` builds deposits with BOT Chain as the source only.
 
 ## License
 
