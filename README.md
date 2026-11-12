@@ -89,9 +89,16 @@ ABIs are generated from verified contracts on BOTScan by `scripts/fetch-abis.ts`
 committed ABIs drift from the explorer, which catches proxy upgrades. ERC-20 uses viem's `erc20Abi`.
 An integration test checks every event's topic0 against a real log on chain.
 
-`addresses` also lists the StakeHub (`stakeHub`) and govBOT (`govBOT`) system contracts and the
-Uzo Deploy factories (`uzoTokenFactory`, `uzoNftFactory`, `uzoTipJarFactory`). Their ABIs are not
-bundled yet.
+`addresses` also lists the StakeHub (`stakeHub`), govBOT (`govBOT`) and validator set
+(`validatorSet`, 0x...1000) system contracts, the first stake credit token (`firstStakeCredit`) and
+the Uzo Deploy factories (`uzoTokenFactory`, `uzoNftFactory`, `uzoTipJarFactory`). Their ABIs are
+not bundled yet. Each block ends with a gas price 0 transaction from the miner to `validatorSet`.
+
+`bdexV2PairAbi` and `bdexV3PoolAbi` cover every BDEX pair and pool. Pairs and pools have no fixed
+address, so get one from the factory (`getPair`, `getPool`) or its `PairCreated` and `PoolCreated`
+events. The ABIs are generated from the first mainnet pair and the WBOT/USDT 0.3% pool. The V3
+pool's `CollectProtocol` and `SetFeeProtocol` events are in the verified source but no pool has
+emitted them yet.
 
 `permit2` is the BDEX Permit2 deployment on each network, the one its Universal Router calls. It is
 not the canonical Uniswap address.
@@ -201,7 +208,7 @@ does not cover the fee, or the destination or recipient is invalid.
 | `getBridgeLimits`       | Minimum and maximum deposit and minimum fee, in USDT base units      |
 | `getBotGasConfig`       | The bridge's BOT gas config, for display                             |
 | `encodeBridgeRecipient` | Validates a recipient and encodes it the way the destination expects |
-| `BRIDGE_DESTINATIONS`   | The destinations above, with each one's recipient format             |
+| `BRIDGE_DESTINATIONS`   | The destinations above, with recipient format and `tracksDelivery`   |
 
 How it works:
 
@@ -213,6 +220,9 @@ How it works:
 - **Recipients.** EVM destinations take a 0x address. Tron and Nile take a base58 `T...`
   address with a valid checksum; a 0x address is rejected for Tron. The zero address is always
   rejected.
+- **Delivery tracking.** `tracksDelivery` is true when the relayer marks deliveries on BOT Chain
+  (the router emits `ExecutionConfirmed`). It is true for the EVM routes and false for Tron and
+  Nile. This is relayer behavior, not a contract rule, so it can change.
 - **Decimals.** `receiveAmount` is in BOT Chain USDT base units (6 decimals). The recipient
   receives the same value expressed in the destination token's decimals (for example 18 on BSC).
 - **BOT gas** (native BOT paid out on arrival, with its cost in USDT deducted) only applies to

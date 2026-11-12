@@ -91,6 +91,12 @@ describe('BRIDGE_DESTINATIONS', () => {
     expect(BRIDGE_DESTINATIONS[677].map((d) => d.chainId)).toEqual([1, 56, 728126428])
     expect(BRIDGE_DESTINATIONS[968].map((d) => d.chainId)).toEqual([97, 11155111, 3448148188])
   })
+
+  it('marks delivery tracked for EVM routes only', () => {
+    for (const d of [...BRIDGE_DESTINATIONS[677], ...BRIDGE_DESTINATIONS[968]]) {
+      expect(d.tracksDelivery, String(d.chainId)).toBe(d.recipientFormat !== 'tron')
+    }
+  })
 })
 
 describe('encodeBridgeRecipient', () => {

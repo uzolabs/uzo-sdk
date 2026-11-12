@@ -2,7 +2,7 @@
  * Official BOT Chain contract addresses, keyed by chain ID.
  *
  * This file is the single source of truth for every address in the SDK.
- * Each entry was verified as a deployed contract on BOTScan, most recently on 2026-11-11.
+ * Each entry was verified as a deployed contract on BOTScan, most recently on 2026-11-12.
  * Do not add an address anywhere else in `src/`.
  *
  * Every value is a checksummed literal type, so `addresses[677].usdt` is typed as
@@ -39,6 +39,17 @@ export const addresses = {
     stakeHub: '0x0000000000000000000000000000000000002002',
     /** System contract. Governance token (govBOT), verified on BOTScan as `GovToken`. */
     govBOT: '0x0000000000000000000000000000000000002005',
+    /**
+     * System contract, verified on BOTScan as `BOTValidatorSet`. Each block ends with a
+     * gas price 0 transaction from the block producer to this address, paying in the fees.
+     */
+    validatorSet: '0x0000000000000000000000000000000000001000',
+    /**
+     * The first ERC-20 on the network: the stake credit token StakeHub created for the first
+     * validator (`stVal001`, mainnet block 48). A TransparentUpgradeableProxy whose
+     * implementation is the `StakeCredit` system contract 0x...2003.
+     */
+    firstStakeCredit: '0x4AFc633E7B6bEB8e552ccddbE06Cca3754991E9A',
     uzoTokenFactory: '0x9D66023a9ab4a062701f0432156a3AC2Fb7964F6',
     uzoNftFactory: '0xaF987D1BaEaAAcfD74b347618119AdeC04a21814',
     uzoTipJarFactory: '0x4925f24c3f51A31F1Dd4EbFE744b3e265240261c',
@@ -62,6 +73,13 @@ export const addresses = {
     stakeHub: '0x0000000000000000000000000000000000002002',
     /** System contract. Governance token (govBOT), verified on BOTScan as `GovToken`. */
     govBOT: '0x0000000000000000000000000000000000002005',
+    /** System contract, verified on BOTScan as `BOTValidatorSet`. Same as mainnet. */
+    validatorSet: '0x0000000000000000000000000000000000001000',
+    /**
+     * Same address as mainnet, but a different validator: on testnet it is `stVal003`
+     * (testnet block 233).
+     */
+    firstStakeCredit: '0x4AFc633E7B6bEB8e552ccddbE06Cca3754991E9A',
     uzoTokenFactory: '0x9D66023a9ab4a062701f0432156a3AC2Fb7964F6',
     uzoNftFactory: '0xaF987D1BaEaAAcfD74b347618119AdeC04a21814',
     /** Differs from mainnet. */
@@ -93,6 +111,12 @@ export const externalBridgeAddresses = {
  * @internal
  */
 export const knownImplementations = {
-  677: { bridgeRouter: '0xD7F50Ee55787C8fFA82abD634801E56f0578a2B3' },
-  968: { bridgeRouter: '0x10FeaF2bcdF840B408C281089F2cCe45C82895d4' },
+  677: {
+    bridgeRouter: '0xD7F50Ee55787C8fFA82abD634801E56f0578a2B3',
+    firstStakeCredit: '0x0000000000000000000000000000000000002003',
+  },
+  968: {
+    bridgeRouter: '0x10FeaF2bcdF840B408C281089F2cCe45C82895d4',
+    firstStakeCredit: '0x0000000000000000000000000000000000002003',
+  },
 } as const
