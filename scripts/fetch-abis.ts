@@ -13,6 +13,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createPublicClient, http } from 'viem'
 import { botChain, botChainTestnet } from '../src/chains'
 import { addresses } from '../src/contracts/addresses'
 
@@ -24,17 +25,64 @@ const EXPLORER_API = {
 type Source = {
   name: string
   chainId: 677 | 968
-  address: string
+  /**
+   * The contract to read the ABI from. A function resolves it on chain, for contracts the
+   * SDK has no fixed address for (BDEX pairs and pools are created by their factories).
+   */
+  address: string | (() => Promise<string>)
   /** A second deployment whose ABI entries missing from the primary are appended. */
   mergeFrom?: { chainId: 677 | 968; address: string }
 }
+
+const mainnet = createPublicClient({ chain: botChain, transport: http() })
+
+const factoryRead = [
+  {
+    type: 'function',
+    name: 'allPairs',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'getPool',
+    stateMutability: 'view',
+    inputs: [
+      { name: '', type: 'address' },
+      { name: '', type: 'address' },
+      { name: '', type: 'uint24' },
+    ],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const
+
+// The first pair the mainnet V2 factory created. Every pair is the same UniswapV2Pair bytecode.
+const firstV2Pair = () =>
+  mainnet.readContract({
+    address: addresses[677].bdexV2Factory,
+    abi: factoryRead,
+    functionName: 'allPairs',
+    args: [0n],
+  })
+
+// The mainnet WBOT/USDT 0.3% pool. Every pool is the same UniswapV3Pool bytecode.
+const wbotUsdtV3Pool = () =>
+  mainnet.readContract({
+    address: addresses[677].bdexV3Factory,
+    abi: factoryRead,
+    functionName: 'getPool',
+    args: [addresses[677].wbot, addresses[677].usdt, 3000],
+  })
 
 // Mainnet by default. One source merges in a second deployment, noted inline.
 const SOURCES: Source[] = [
   { name: 'wbot', chainId: 677, address: addresses[677].wbot },
   { name: 'bdexV2Factory', chainId: 677, address: addresses[677].bdexV2Factory },
+  { name: 'bdexV2Pair', chainId: 677, address: firstV2Pair },
   { name: 'bdexV2Router02', chainId: 677, address: addresses[677].bdexV2Router02 },
   { name: 'bdexV3Factory', chainId: 677, address: addresses[677].bdexV3Factory },
+  { name: 'bdexV3Pool', chainId: 677, address: wbotUsdtV3Pool },
   { name: 'bdexV3QuoterV2', chainId: 677, address: addresses[677].bdexV3QuoterV2 },
   { name: 'bdexV3SwapRouter', chainId: 677, address: addresses[677].bdexV3SwapRouter },
   { name: 'permit2', chainId: 677, address: addresses[677].permit2 },
@@ -88,8 +136,10 @@ async function getSmartContract(chainId: 677 | 968, address: string): Promise<Sm
   return (await res.json()) as SmartContract
 }
 
+type ResolvedSource = Source & { address: string }
+
 type Fetched = {
-  source: Source
+  source: ResolvedSource
   contractName: string
   implementation?: string
   patch?: string
@@ -100,7 +150,7 @@ function signature(entry: AbiEntry): string {
   return `${entry.type} ${entry.name ?? ''}(${(entry.inputs ?? []).map((i) => i.type).join(',')})`
 }
 
-async function fetchAbi(source: Source): Promise<Fetched> {
+async function fetchAbi(source: ResolvedSource): Promise<Fetched> {
   const primary = await fetchOne(source)
   if (!source.mergeFrom) return primary
   const other = await fetchOne({ name: source.name, ...source.mergeFrom })
@@ -114,7 +164,7 @@ async function fetchAbi(source: Source): Promise<Fetched> {
   return { ...primary, abi: [...primary.abi, ...extra] }
 }
 
-async function fetchOne(source: Source): Promise<Fetched> {
+async function fetchOne(source: ResolvedSource): Promise<Fetched> {
   const proxy = await getSmartContract(source.chainId, source.address)
   let target = proxy
   let implementation: string | undefined
@@ -191,7 +241,13 @@ function renderIndex(names: string[]): string {
 
 async function main() {
   const check = process.argv.includes('--check')
-  const fetched = await Promise.all(SOURCES.map(fetchAbi))
+  const resolved = await Promise.all(
+    SOURCES.map(async (s) => ({
+      ...s,
+      address: typeof s.address === 'function' ? await s.address() : s.address,
+    })),
+  )
+  const fetched = await Promise.all(resolved.map(fetchAbi))
   const date = new Date().toISOString().slice(0, 10)
   const drift: string[] = []
 

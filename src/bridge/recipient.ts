@@ -10,6 +10,13 @@ export type BridgeDestination = {
   chainId: number
   name: string
   recipientFormat: BridgeRecipientFormat
+  /**
+   * Whether the relayer records delivery on the BOT Chain router for this route, by calling
+   * `markExecutionConfirmed`, which emits `ExecutionConfirmed` with the deposit's nonce.
+   * When false, delivery can only be seen on the destination chain. This is what the
+   * relayer does today (see the evidence below), not a rule in the contract.
+   */
+  tracksDelivery: boolean
 }
 
 /**
@@ -23,6 +30,10 @@ export type BridgeDestination = {
  * - `tron`: pass a base58 `T...` address. The contract stores its 20-byte body (the base58check
  *   payload without the 0x41 prefix and checksum), and the gateway pays the `T...` address.
  *   A plain 0x address is rejected, so funds cannot be sent to a Tron account nobody chose.
+ *
+ * `tracksDelivery` is true for the four EVM routes, each of which has a
+ * `markExecutionConfirmed` for its evidence deposit, and false for the two Tron routes, which
+ * have none.
  */
 // Evidence per route (BOT Chain deposit tx, then what confirmed it):
 // 677 -> 1 Ethereum: deposit 0xf0ccb5c16ddc6bcb840920a8570437ee38de5e28b7422aa950dca3db36826201
@@ -48,14 +59,14 @@ export type BridgeDestination = {
 //   confirmation, as for Tron.
 export const BRIDGE_DESTINATIONS = {
   677: [
-    { chainId: 1, name: 'Ethereum', recipientFormat: 'evm' },
-    { chainId: 56, name: 'BNB Smart Chain', recipientFormat: 'evm' },
-    { chainId: 728126428, name: 'Tron', recipientFormat: 'tron' },
+    { chainId: 1, name: 'Ethereum', recipientFormat: 'evm', tracksDelivery: true },
+    { chainId: 56, name: 'BNB Smart Chain', recipientFormat: 'evm', tracksDelivery: true },
+    { chainId: 728126428, name: 'Tron', recipientFormat: 'tron', tracksDelivery: false },
   ],
   968: [
-    { chainId: 97, name: 'BNB Smart Chain Testnet', recipientFormat: 'evm' },
-    { chainId: 11155111, name: 'Sepolia', recipientFormat: 'evm' },
-    { chainId: 3448148188, name: 'Tron Nile', recipientFormat: 'tron' },
+    { chainId: 97, name: 'BNB Smart Chain Testnet', recipientFormat: 'evm', tracksDelivery: true },
+    { chainId: 11155111, name: 'Sepolia', recipientFormat: 'evm', tracksDelivery: true },
+    { chainId: 3448148188, name: 'Tron Nile', recipientFormat: 'tron', tracksDelivery: false },
   ],
 } as const satisfies Record<SupportedChainId, readonly BridgeDestination[]>
 

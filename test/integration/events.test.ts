@@ -1,5 +1,6 @@
 import {
   type AbiEvent,
+  type Address,
   createPublicClient,
   decodeEventLog,
   type Hash,
@@ -12,7 +13,9 @@ import { botChain, botChainTestnet } from '../../src/chains'
 import {
   addresses,
   bdexV2FactoryAbi,
+  bdexV2PairAbi,
   bdexV3FactoryAbi,
+  bdexV3PoolAbi,
   botBridgeAbi,
   botBridgeLegacyEventsAbi,
   permit2Abi,
@@ -33,7 +36,9 @@ type ChainId = keyof typeof clients
 type Contract =
   | 'wbot'
   | 'bdexV2Factory'
+  | 'bdexV2Pair'
   | 'bdexV3Factory'
+  | 'bdexV3Pool'
   | 'permit2'
   | 'universalRouter'
   | 'bridgeRouter'
@@ -41,7 +46,9 @@ type Contract =
 const abis = {
   wbot: wbotAbi,
   bdexV2Factory: bdexV2FactoryAbi,
+  bdexV2Pair: bdexV2PairAbi,
   bdexV3Factory: bdexV3FactoryAbi,
+  bdexV3Pool: bdexV3PoolAbi,
   permit2: permit2Abi,
   universalRouter: universalRouterAbi,
   bridgeRouter: botBridgeAbi,
@@ -54,6 +61,20 @@ const legacy = (name: string) => {
   const event = events(botBridgeLegacyEventsAbi).find((e) => e.name === name)
   if (!event) throw new Error(`No legacy event ${name}.`)
   return event
+}
+
+// Pairs and pools have no fixed address in the SDK. These are the instances the ABIs were
+// generated from (scripts/fetch-abis.ts): the first mainnet V2 pair and the mainnet
+// WBOT/USDT 0.3% V3 pool. Test data only.
+const INSTANCES: Partial<Record<Contract, Address>> = {
+  bdexV2Pair: '0xdc7547f3cEa82C6Af7fd420656cE532C6da9b98d',
+  bdexV3Pool: '0x64F418471a1A7932a190E10da5A8551dB5AbeC05',
+}
+
+const contractAddress = (chainId: ChainId, contract: Contract): Address => {
+  const instance = INSTANCES[contract]
+  if (instance) return instance
+  return addresses[chainId][contract as keyof (typeof addresses)[ChainId]]
 }
 
 type Fixture = { chainId: ChainId; contract: Contract; event: string | AbiEvent; tx: Hash }
@@ -113,6 +134,84 @@ const fixtures: Fixture[] = [
     contract: 'permit2',
     event: 'Approval',
     tx: '0x10cba773cf07f3decbecbe9959e0986ba52b1f27248598f3563e400b7f5070b8',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Approval',
+    tx: '0x8da34bb377f7cbdccdeb89d775d288a906bd982b5d2945e5041830586c72ce08',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Burn',
+    tx: '0x8da34bb377f7cbdccdeb89d775d288a906bd982b5d2945e5041830586c72ce08',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Mint',
+    tx: '0x85a303df44466800defbf84cdfe7c0c8871c77009ef17bb0c76fb5acab738b08',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Swap',
+    tx: '0x173be3747f0cdf78e5db5fa68329bf34e7438c94dd7d342be196d42ba0bd1ad7',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Sync',
+    tx: '0x85a303df44466800defbf84cdfe7c0c8871c77009ef17bb0c76fb5acab738b08',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV2Pair',
+    event: 'Transfer',
+    tx: '0x85a303df44466800defbf84cdfe7c0c8871c77009ef17bb0c76fb5acab738b08',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Initialize',
+    tx: '0xae23190343bc93ec8aa1decf6d5907eb14b8040c2274c757bbc0094f7d21e4d5',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Mint',
+    tx: '0xae23190343bc93ec8aa1decf6d5907eb14b8040c2274c757bbc0094f7d21e4d5',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Swap',
+    tx: '0x3dce0824598e2422f018191f3129d9a8aae46594c25a18ac57dc9e203b5581c3',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Burn',
+    tx: '0x27779f4f1ea01d3b85e96d12ce13c55a0bcc032b35b3ffbeb62fa955c92c2e64',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Collect',
+    tx: '0x27779f4f1ea01d3b85e96d12ce13c55a0bcc032b35b3ffbeb62fa955c92c2e64',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'Flash',
+    tx: '0x4b5b1a7e6edb0d2787dc58c3777563cbdb84e816896cd69edfe6c51b73672d85',
+  },
+  {
+    chainId: 677,
+    contract: 'bdexV3Pool',
+    event: 'IncreaseObservationCardinalityNext',
+    tx: '0x8c2d0a6ea65c3573034688899353f49c6818b05e1b9df0b6a60afa19dde77c14',
   },
   {
     chainId: 677,
@@ -270,6 +369,9 @@ const fixtures: Fixture[] = [
 // No log with these topic0 values exists at the SDK addresses on either network
 // (BOTScan getLogs over the full history, checked 2026-11-11). Revisit when one appears.
 const NOT_EMITTED: Partial<Record<Contract, string[]>> = {
+  // No pool on either network has emitted these (BOTScan getLogs by topic0 alone, all
+  // addresses, full history, checked 2026-11-12).
+  bdexV3Pool: ['CollectProtocol', 'SetFeeProtocol'],
   permit2: ['Lockdown', 'NonceInvalidation', 'Permit', 'UnorderedNonceInvalidation'],
   universalRouter: ['EIP712DomainChanged'],
   bridgeRouter: [
@@ -327,7 +429,7 @@ describe('event fixtures cover every ABI event', () => {
 describe.each(fixtures.map((f) => ({ ...f, name: label(f) })))('$name', (fixture) => {
   it('matches topic0 and decodes with named args from a real log', async () => {
     const event = resolve(fixture)
-    const address = addresses[fixture.chainId][fixture.contract]
+    const address = contractAddress(fixture.chainId, fixture.contract)
     const selector = toEventSelector(event)
     const receipt = await clients[fixture.chainId].getTransactionReceipt({ hash: fixture.tx })
     const log = receipt.logs.find(
